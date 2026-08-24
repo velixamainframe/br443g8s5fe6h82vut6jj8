@@ -1614,10 +1614,12 @@ function AdminSettingsView() {
 
       {/* Deployment info */}
       <Card className="p-6">
-        <h3 className="mb-2 text-sm font-semibold">Deployment</h3>
+        <h3 className="mb-2 text-sm font-semibold">Note</h3>
         <p className="text-sm text-muted-foreground">
-          This CRM is configured for deployment to Vercel at <code className="rounded bg-muted px-1.5 py-0.5 text-xs">agent.velixacapital.in</code>.
-          Set the required environment variables (JWT_SECRET, BOOTSTRAP_ADMIN_*, DATABASE_URL) in your Vercel project settings.
+          Do not share user credentials for <code className="rounded bg-muted px-1.5 py-0.5 text-xs">agent.velixacapital.in</code>.
+          Any breach of this policy may result in account suspension or termination. For any issues, contact support at <a href="mailto:info@velixacapital.in" className="underline">
+            info@velixacapital.in
+          </a>
         </p>
       </Card>
     </div>
