@@ -1,0 +1,221 @@
+// Velixa Capital CRM — Production Prisma Schema for Supabase (PostgreSQL)
+// =================================================================
+// This is the SAME schema as the SQLite version but with provider = "postgresql".
+// Replace your prisma/schema.prisma with this file when deploying to Supabase.
+// =================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  phone        String?
+  role         String   @default("EMPLOYEE")
+  passwordHash String
+  active       Boolean  @default(true)
+  canTransferLeads  Boolean @default(true)
+  canViewAllLeads   Boolean @default(false)
+  partnerId    String?  @unique
+  partner      Partner? @relation(fields: [partnerId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
+
+  claimedLeads   Lead[]          @relation("LeadAssignee")
+  notes          Note[]
+  followups      FollowUp[]
+  activities     ActivityLog[]
+  requestsMade   InternalRequest[] @relation("RequestAuthor")
+  requestsOwned  InternalRequest[] @relation("RequestOwner")
+  transfersFrom  LeadTransfer[]  @relation("TransferFrom")
+  transfersTo    LeadTransfer[]  @relation("TransferTo")
+  transferApproved LeadTransfer[] @relation("TransferApprover")
+  createdLeads   Lead[]          @relation("LeadCreator")
+}
+
+model Partner {
+  id          String   @id @default(cuid())
+  companyName String?
+  contactName String?
+  phone       String?
+  email       String?
+  user        User?
+  leads       Lead[]   @relation("PartnerLeads")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  id    String   @id @default(cuid())
+  key   String   @unique
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+model WebsiteLead {
+  id                 String   @id @default(cuid())
+  source             String   @default("ENQUIRY_FORM")
+  name               String
+  email              String?
+  phone              String
+  cibilScore         String?
+  loanAmount         String?
+  loanType           String?
+  employmentType     String?
+  monthlyIncome      String?
+  city               String?
+  state              String?
+  message            String?
+  preferredCallbackTime String?
+  isUrgent           Boolean  @default(false)
+  websiteUrl         String?
+  userAgent          String?
+  referrer           String?
+  submittedAt        DateTime @default(now())
+  receivedAt         DateTime @default(now())
+  leadId             String?  @unique
+  lead               Lead?    @relation(fields: [leadId], references: [id])
+  importedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([phone])
+  @@index([source])
+  @@index([isUrgent])
+}
+
+model Lead {
+  id              String   @id @default(cuid())
+  origin          String   @default("MANUAL")
+  source          String   @default("MANUAL")
+  name            String
+  email           String?
+  phone           String
+  altPhone        String?
+  cibilScore      String?
+  loanAmount      Float?
+  loanType        String?
+  employmentType  String?
+  monthlyIncome   Float?
+  city            String?
+  state           String?
+  notes           String?
+  status          String   @default("NEW")
+  priority        String   @default("MEDIUM")
+  assignedToId    String?
+  assignedTo      User?    @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  claimedAt       DateTime?
+  partnerId       String?
+  partner         Partner? @relation("PartnerLeads", fields: [partnerId], references: [id])
+  createdById     String?
+  createdBy       User?    @relation("LeadCreator", fields: [createdById], references: [id])
+  dedupeKey       String
+  nextFollowUpAt  DateTime?
+  lastContactedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  websiteLead     WebsiteLead?
+  notesRel        Note[]
+  followups       FollowUp[]
+  activities      ActivityLog[]
+  transfers       LeadTransfer[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([source])
+  @@index([phone])
+  @@unique([dedupeKey])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  content   String
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model FollowUp {
+  id          String   @id @default(cuid())
+  leadId      String
+  createdBy   String
+  author      User     @relation(fields: [createdBy], references: [id])
+  lead        Lead     @relation(fields: [leadId], references: [id])
+  scheduledAt DateTime
+  type        String   @default("CALL")
+  notes       String?
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@index([scheduledAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  meta      String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([userId])
+}
+
+model LeadTransfer {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  fromUserId   String
+  fromUser     User     @relation("TransferFrom", fields: [fromUserId], references: [id])
+  toUserId     String
+  toUser       User     @relation("TransferTo", fields: [toUserId], references: [id])
+  status       String   @default("PENDING")
+  reason       String?
+  approvedById String?
+  approvedBy   User?    @relation("TransferApprover", fields: [approvedById], references: [id])
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+
+  @@index([leadId])
+}
+
+model InternalRequest {
+  id            String   @id @default(cuid())
+  requestedById String
+  requestedBy   User     @relation("RequestAuthor", fields: [requestedById], references: [id])
+  assignedToId  String?
+  assignedTo    User?    @relation("RequestOwner", fields: [assignedToId], references: [id])
+  type          String   @default("ISSUE")
+  subject       String
+  description   String
+  status        String   @default("OPEN")
+  priority      String   @default("MEDIUM")
+  leadId        String?
+  response      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([requestedById])
+  @@index([status])
+}

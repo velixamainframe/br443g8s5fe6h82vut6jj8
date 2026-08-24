@@ -1,0 +1,251 @@
+// Velixa Capital CRM — Prisma Schema
+// ------------------------------------------------------------------
+// This schema is intentionally written to be Postgres-compatible so the
+// project can be deployed to Vercel with Supabase/Postgres by changing
+// only the `provider` + `DATABASE_URL`. In this sandbox it runs on SQLite.
+//
+// Two logical databases are represented here:
+//   1. AUTH DB   → User / Partner / Setting  (CRM authentication & users)
+//   2. WEBSITE DATA DB → WebsiteLead          (leads pushed from the main site)
+// Lead is the unified lead record in the CRM (the "Universal Lead Box").
+// ------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================ AUTH DATABASE ============================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  phone        String?
+  role         String   @default("EMPLOYEE") // ADMIN | EMPLOYEE | PARTNER
+  passwordHash String
+  active       Boolean  @default(true)
+  // employee permissions
+  canTransferLeads  Boolean @default(true)
+  canViewAllLeads   Boolean @default(false)
+  // partner link
+  partnerId    String?  @unique
+  partner      Partner? @relation(fields: [partnerId], references: [id])
+  // timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
+
+  // relations
+  claimedLeads   Lead[]          @relation("LeadAssignee")
+  notes          Note[]
+  followups      FollowUp[]
+  activities     ActivityLog[]
+  requestsMade   InternalRequest[] @relation("RequestAuthor")
+  requestsOwned  InternalRequest[] @relation("RequestOwner")
+  transfersFrom  LeadTransfer[]  @relation("TransferFrom")
+  transfersTo    LeadTransfer[]  @relation("TransferTo")
+  transferApproved LeadTransfer[] @relation("TransferApprover")
+  createdLeads   Lead[]          @relation("LeadCreator")
+}
+
+model Partner {
+  id          String   @id @default(cuid())
+  companyName String?
+  contactName String?
+  phone       String?
+  email       String?
+  user        User?
+  leads       Lead[]   @relation("PartnerLeads")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  id    String   @id @default(cuid())
+  key   String   @unique
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+// ====================== WEBSITE DATA DATABASE ======================
+// Records pushed from the main Velixa Capital website (enquiry forms,
+// chatbot submissions, callback requests, contact forms). The CRM reads
+// these and imports them into the Universal Lead Box.
+
+model WebsiteLead {
+  id                 String   @id @default(cuid())
+  source             String   @default("ENQUIRY_FORM") // ENQUIRY_FORM | CHATBOT | CALLBACK_REQUEST | CONTACT_FORM
+  name               String
+  email              String?
+  phone              String
+  cibilScore         String?
+  loanAmount         String?
+  loanType           String?
+  employmentType     String?
+  monthlyIncome      String?
+  city               String?
+  state              String?
+  message            String?
+  preferredCallbackTime String?
+  isUrgent           Boolean  @default(false)
+  // website metadata
+  websiteUrl         String?
+  userAgent          String?
+  referrer           String?
+  submittedAt        DateTime @default(now())
+  receivedAt         DateTime @default(now())
+  // import status into lead box
+  leadId             String?  @unique // once imported, link to the Lead
+  lead               Lead?    @relation(fields: [leadId], references: [id])
+  importedAt         DateTime?
+  createdAt          DateTime @default(now())
+
+  @@index([phone])
+  @@index([source])
+  @@index([isUrgent])
+}
+
+// ========================= LEAD MANAGEMENT =========================
+
+model Lead {
+  id              String   @id @default(cuid())
+  // origin / source tracking
+  origin          String   @default("MANUAL") // WEBSITE | MANUAL | PARTNER | IMPORT
+  source          String   @default("MANUAL") // ENQUIRY_FORM | CHATBOT | CALLBACK_REQUEST | CONTACT_FORM | MANUAL | PARTNER | IMPORT | REFERRAL
+  // core data
+  name            String
+  email           String?
+  phone           String
+  altPhone        String?
+  cibilScore      String?
+  loanAmount      Float?
+  loanType        String?
+  employmentType  String?
+  monthlyIncome   Float?
+  city            String?
+  state           String?
+  notes           String?
+  // status / assignment / priority
+  status          String   @default("NEW") // NEW | CLAIMED | CONTACTED | FOLLOW_UP | CALLBACK | QUALIFIED | CONVERTED | REJECTED | CLOSED
+  priority        String   @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  assignedToId    String?  // employee who claimed / was assigned
+  assignedTo      User?    @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  claimedAt       DateTime?
+  // partner ownership
+  partnerId       String?
+  partner         Partner? @relation("PartnerLeads", fields: [partnerId], references: [id])
+  // creator (admin/employee/partner who created)
+  createdById     String?
+  createdBy       User?    @relation("LeadCreator", fields: [createdById], references: [id])
+  // duplicate-safe: one active lead per phone+origin
+  dedupeKey       String
+  // follow-up scheduling
+  nextFollowUpAt  DateTime?
+  lastContactedAt DateTime?
+  // timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // relations
+  websiteLead     WebsiteLead?
+  notesRel        Note[]
+  followups       FollowUp[]
+  activities      ActivityLog[]
+  transfers       LeadTransfer[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([source])
+  @@index([phone])
+  @@unique([dedupeKey])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  leadId    String
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  lead      Lead     @relation(fields: [leadId], references: [id])
+  content   String
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+model FollowUp {
+  id          String   @id @default(cuid())
+  leadId      String
+  createdBy   String
+  author      User     @relation(fields: [createdBy], references: [id])
+  lead        Lead     @relation(fields: [leadId], references: [id])
+  scheduledAt DateTime
+  type        String   @default("CALL") // CALL | MEETING | EMAIL | WHATSAPP | VISIT
+  notes       String?
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@index([scheduledAt])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  meta      String? // JSON string
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([userId])
+}
+
+model LeadTransfer {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  fromUserId   String
+  fromUser     User     @relation("TransferFrom", fields: [fromUserId], references: [id])
+  toUserId     String
+  toUser       User     @relation("TransferTo", fields: [toUserId], references: [id])
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | COMPLETED | CANCELLED
+  reason       String?
+  approvedById String?
+  approvedBy   User?    @relation("TransferApprover", fields: [approvedById], references: [id])
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+
+  @@index([leadId])
+}
+
+model InternalRequest {
+  id            String   @id @default(cuid())
+  requestedById String
+  requestedBy   User     @relation("RequestAuthor", fields: [requestedById], references: [id])
+  assignedToId  String?
+  assignedTo    User?    @relation("RequestOwner", fields: [assignedToId], references: [id])
+  type          String   @default("ISSUE") // LEAD_TRANSFER | ISSUE | ACCESS | LEAD_REQUEST | OTHER
+  subject       String
+  description   String
+  status        String   @default("OPEN") // OPEN | IN_PROGRESS | RESOLVED | CLOSED
+  priority      String   @default("MEDIUM") // LOW | MEDIUM | HIGH | URGENT
+  leadId        String?
+  response      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([requestedById])
+  @@index([status])
+}
