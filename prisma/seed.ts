@@ -25,8 +25,9 @@ const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 async function main() {
   // ---- Bootstrap admin ----
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@velixacapital.in'
-  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Velixa@Admin2025'
-  const name = process.env.BOOTSTRAP_ADMIN_NAME || 'Velixa Administrator'
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Velkun@1555'
+  const name = process.env.BOOTSTRAP_ADMIN_NAME || 'Vishes Administrator'
+  const bootstrapOnly = process.env.BOOTSTRAP_ONLY === 'true'
 
   const existing = await db.user.findUnique({ where: { email } })
   if (!existing) {
@@ -42,6 +43,11 @@ async function main() {
     console.log(`✓ Bootstrap admin created: ${email}`)
   } else {
     console.log(`• Bootstrap admin already exists: ${email}`)
+  }
+
+  if (bootstrapOnly) {
+    console.log('Seed complete. Demo data skipped (BOOTSTRAP_ONLY=true).')
+    return
   }
 
   // ---- Sample employees (7 total) ----
@@ -210,7 +216,7 @@ async function main() {
   }
 
   console.log('\nSeed complete.')
-  console.log('Login: admin@velixacapital.in / Velixa@Admin2025')
+  console.log('Login: admin@velixacapital.in / Velkun@1555')
   console.log(`Employees: ${employees.length} | Partners: ${partners.length}`)
 }
 
