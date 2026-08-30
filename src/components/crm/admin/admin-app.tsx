@@ -1,6 +1,8 @@
 'use client'
 
 import * as React from 'react'
+import Papa from 'papaparse'
+import { useQueryClient } from '@tanstack/react-query'
 import { DashboardShell, type NavItem } from '@/components/crm/dashboard-shell'
 import { StatCard } from '@/components/crm/stat-card'
 import { LeadsView } from '@/components/crm/leads-view'
@@ -17,6 +19,7 @@ import {
   useInternalRequests,
   useActivities,
   useBulkAssign,
+  useBulkUpdateLeadStatus,
   useImportLeads,
   usePartners,
   useWebsiteLeads,
@@ -84,6 +87,7 @@ import {
   Monitor,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { LEAD_STATUSES, type LeadStatus } from '@/lib/constants'
 
 export function AdminApp() {
   const { user } = useAuth()
@@ -147,7 +151,12 @@ export function AdminApp() {
       title={titles[active]?.title ?? 'Dashboard'}
       subtitle={titles[active]?.subtitle}
       actions={
-        active === 'leadbox' ? <UploadLeadsButton /> : active === 'leadbox-select' ? undefined : undefined
+        active === 'leadbox' ? (
+          <div className="flex items-center gap-2">
+            <CreateLeadButton />
+            <UploadLeadsButton />
+          </div>
+        ) : undefined
       }
     >
       {active === 'overview' && <AdminOverview onNavigate={setActive} />}
@@ -168,14 +177,51 @@ function UploadLeadsButton() {
   const { toast } = useToast()
   const importLeads = useImportLeads()
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const [pendingFile, setPendingFile] = React.useState<File | null>(null)
+  const [previewRows, setPreviewRows] = React.useState(0)
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
 
-  async function handle(file: File) {
+  async function previewFile(file: File) {
     try {
-      const res = await importLeads.mutateAsync(file)
+      const text = await file.text()
+      const parsed = Papa.parse<Record<string, unknown>>(text, {
+        header: true,
+        skipEmptyLines: true,
+      })
+      const rows = parsed.data.filter((row) => Object.values(row).some((value) => value !== null && String(value).trim() !== '')).length
+      setPendingFile(file)
+      setPreviewRows(rows)
+      setConfirmOpen(true)
+    } catch {
+      setPendingFile(file)
+      setPreviewRows(0)
+      setConfirmOpen(true)
+    }
+  }
+
+  async function handleConfirm() {
+    if (!pendingFile) return
+    try {
+      const res = await importLeads.mutateAsync(pendingFile)
       toast({ title: `Imported ${res.created} leads`, description: `${res.duplicates} duplicates, ${res.skipped} skipped` })
+      setConfirmOpen(false)
+      setPendingFile(null)
+      setPreviewRows(0)
+      if (inputRef.current) inputRef.current.value = ''
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : 'Import failed', variant: 'destructive' })
     }
+  }
+
+  function downloadTemplate() {
+    const csv = 'name,phone,email,loanAmount,loanType,city,state,cibilScore,notes\nJohn Doe,9876543210,john@example.com,500000,Personal Loan,Mumbai,Maharashtra,750,Sample note\n'
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'velixa-leads-template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -185,12 +231,175 @@ function UploadLeadsButton() {
         type="file"
         accept=".csv,text/csv"
         className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); e.target.value = '' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) {
+            void previewFile(f)
+          }
+          e.target.value = ''
+        }}
       />
+
+      <Dialog open={confirmOpen} onOpenChange={(open) => {
+        setConfirmOpen(open)
+        if (!open) {
+          setPendingFile(null)
+          setPreviewRows(0)
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm CSV import</DialogTitle>
+            <DialogDescription>
+              {pendingFile ? `This will add ${previewRows || 'the'} lead record(s) from ${pendingFile.name} to the Universal Lead Box.` : 'Review the selected CSV before importing.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">File</span>
+              <span className="font-medium text-foreground">{pendingFile?.name ?? '—'}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Rows found</span>
+              <span className="font-medium text-foreground">{previewRows}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Default source</span>
+              <span className="font-medium text-foreground">IMPORT</span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)} disabled={importLeads.isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={downloadTemplate} className="hidden sm:inline-flex">Template</Button>
+            <Button type="button" onClick={handleConfirm} disabled={importLeads.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
+              {importLeads.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+              Confirm import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={importLeads.isPending}>
         {importLeads.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
         Import CSV
       </Button>
+    </>
+  )
+}
+
+function CreateLeadButton() {
+  const { toast } = useToast()
+  const qc = useQueryClient()
+  const [open, setOpen] = React.useState(false)
+  const [submitting, setSubmitting] = React.useState(false)
+  const [form, setForm] = React.useState({
+    name: '',
+    phone: '',
+    email: '',
+    cibilScore: '',
+    requestedAmount: '',
+    loanType: '',
+    city: '',
+    notes: '',
+  })
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim() || !form.phone.trim()) {
+      toast({ title: 'Name and phone are required', variant: 'destructive' })
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await api.post<{ lead?: { id: string }; duplicate?: boolean }>('/api/leads', {
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim() || undefined,
+        cibilScore: form.cibilScore.trim() || undefined,
+        loanAmount: form.requestedAmount ? Number(form.requestedAmount) : undefined,
+        loanType: form.loanType || undefined,
+        city: form.city.trim() || undefined,
+        notes: form.notes.trim() || undefined,
+        source: 'MANUAL',
+      })
+      toast({
+        title: res.duplicate ? 'Lead already exists' : 'Lead created',
+        description: res.duplicate ? 'A matching lead with this phone was already found.' : 'The lead has been added to the Universal Lead Box.',
+      })
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+      setOpen(false)
+      setForm({ name: '', phone: '', email: '', cibilScore: '', requestedAmount: '', loanType: '', city: '', notes: '' })
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Could not create lead', variant: 'destructive' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => setOpen(true)}>
+        <Plus className="mr-1.5 h-4 w-4" />
+        Create Lead
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Add lead manually</DialogTitle>
+            <DialogDescription>Capture a new lead without importing a CSV file.</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="lead-name">Name</Label>
+                <Input id="lead-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead-phone">Phone number</Label>
+                <Input id="lead-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead-email">Email</Label>
+                <Input id="lead-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@example.com" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead-cibil">CIBIL score</Label>
+                <Input id="lead-cibil" value={form.cibilScore} onChange={(e) => setForm({ ...form, cibilScore: e.target.value })} placeholder="e.g. 750" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead-amount">Requested amount</Label>
+                <Input id="lead-amount" type="number" value={form.requestedAmount} onChange={(e) => setForm({ ...form, requestedAmount: e.target.value })} placeholder="e.g. 500000" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lead-loan-type">Loan type</Label>
+                <Input id="lead-loan-type" value={form.loanType} onChange={(e) => setForm({ ...form, loanType: e.target.value })} placeholder="Home Loan" />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="lead-city">City</Label>
+                <Input id="lead-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="City" />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="lead-notes">Notes</Label>
+                <Textarea id="lead-notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={4} placeholder="Any customer notes, follow-up context, or urgency details..." />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={submitting} className="bg-brand text-brand-foreground hover:bg-brand/90">
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Add lead
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -521,7 +730,10 @@ function AdminLeadBox() {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([])
   const [assignOpen, setAssignOpen] = React.useState(false)
   const [assignTo, setAssignTo] = React.useState('')
+  const [statusOpen, setStatusOpen] = React.useState(false)
+  const [statusValue, setStatusValue] = React.useState<LeadStatus>('NEW')
   const bulk = useBulkAssign()
+  const bulkStatus = useBulkUpdateLeadStatus()
   const { data: usersData } = useUsers('EMPLOYEE')
   const employees = (usersData?.users as { id: string; name: string; email: string }[]) ?? []
 
@@ -541,14 +753,31 @@ function AdminLeadBox() {
     }
   }
 
+  async function doBulkStatusUpdate() {
+    if (!selectedIds.length) return
+    try {
+      const res = await bulkStatus.mutateAsync({ leadIds: selectedIds, status: statusValue })
+      toast({ title: `Updated ${res.updated} lead(s)`, description: `${statusValue.replace('_', ' ')} status applied.` })
+      setSelectedIds([])
+      setStatusOpen(false)
+      setStatusValue('NEW')
+    } catch (e) {
+      toast({ title: 'Bulk status update failed', variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="space-y-3">
       {selectedIds.length > 0 && (
         <Card className="border-brand/30 bg-brand/5 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">{selectedIds.length} lead(s) selected</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setSelectedIds([])}>Clear</Button>
+              <Button size="sm" variant="outline" onClick={() => setStatusOpen(true)}>
+                <Clock className="mr-1.5 h-4 w-4" />
+                Update status
+              </Button>
               <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => setAssignOpen(true)}>
                 <UserCheck className="mr-1.5 h-4 w-4" />
                 Bulk assign
@@ -587,6 +816,32 @@ function AdminLeadBox() {
             <Button onClick={doAssign} disabled={bulk.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
               {bulk.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Assign leads
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update {selectedIds.length} lead(s)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label>New status</Label>
+            <Select value={statusValue} onValueChange={(v) => setStatusValue(v as LeadStatus)}>
+              <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+              <SelectContent>
+                {LEAD_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>{status.replace('_', ' ')}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusOpen(false)}>Cancel</Button>
+            <Button onClick={doBulkStatusUpdate} disabled={bulkStatus.isPending} className="bg-brand text-brand-foreground hover:bg-brand/90">
+              {bulkStatus.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Update status
             </Button>
           </DialogFooter>
         </DialogContent>

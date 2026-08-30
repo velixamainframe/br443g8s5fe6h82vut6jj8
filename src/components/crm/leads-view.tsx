@@ -39,6 +39,11 @@ export function LeadsView({
   const claim = useClaimLead()
 
   const [query, setQuery] = React.useState('')
+  const [cityFilter, setCityFilter] = React.useState('')
+  const [cibilMin, setCibilMin] = React.useState('')
+  const [cibilMax, setCibilMax] = React.useState('')
+  const [loanMin, setLoanMin] = React.useState('')
+  const [loanMax, setLoanMax] = React.useState('')
   const [page, setPage] = React.useState(1)
   const [statusFilter, setStatusFilter] = React.useState<LeadStatus[]>(fixedStatuses ?? [])
   const [priorityFilter, setPriorityFilter] = React.useState<LeadPriority[]>([])
@@ -52,6 +57,11 @@ export function LeadsView({
     page,
     pageSize: 15,
     q: query,
+    city: cityFilter,
+    cibilMin,
+    cibilMax,
+    loanMin,
+    loanMax,
     status: statusFilter,
     priority: priorityFilter,
     source: sourceFilter,
@@ -91,6 +101,12 @@ export function LeadsView({
 
   function onExport() {
     const params = new URLSearchParams()
+    if (query) params.set('q', query)
+    if (cityFilter) params.set('city', cityFilter)
+    if (cibilMin) params.set('cibilMin', cibilMin)
+    if (cibilMax) params.set('cibilMax', cibilMax)
+    if (loanMin) params.set('loanMin', loanMin)
+    if (loanMax) params.set('loanMax', loanMax)
     statusFilter.forEach((s) => params.append('status', s))
     priorityFilter.forEach((p) => params.append('priority', p))
     sourceFilter.forEach((s) => params.append('source', s))
@@ -126,6 +142,31 @@ export function LeadsView({
         sourceFilter={sourceFilter}
         onSourceFilterChange={(v) => {
           setSourceFilter(v)
+          setPage(1)
+        }}
+        cityFilter={cityFilter}
+        onCityFilterChange={(v) => {
+          setCityFilter(v)
+          setPage(1)
+        }}
+        cibilMin={cibilMin}
+        onCibilMinChange={(v) => {
+          setCibilMin(v)
+          setPage(1)
+        }}
+        cibilMax={cibilMax}
+        onCibilMaxChange={(v) => {
+          setCibilMax(v)
+          setPage(1)
+        }}
+        loanMin={loanMin}
+        onLoanMinChange={(v) => {
+          setLoanMin(v)
+          setPage(1)
+        }}
+        loanMax={loanMax}
+        onLoanMaxChange={(v) => {
+          setLoanMax(v)
           setPage(1)
         }}
         sortBy={sortBy}

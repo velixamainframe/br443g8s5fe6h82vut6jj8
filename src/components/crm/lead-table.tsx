@@ -24,6 +24,7 @@ import {
   PriorityBadge,
   SourceBadge,
 } from '@/components/crm/badges'
+import { getLeadScore } from '@/lib/lead-score'
 import {
   Search,
   Phone,
@@ -85,6 +86,16 @@ export interface LeadTableProps {
   onPriorityFilterChange: (v: LeadPriority[]) => void
   sourceFilter: LeadSource[]
   onSourceFilterChange: (v: LeadSource[]) => void
+  cityFilter?: string
+  onCityFilterChange?: (v: string) => void
+  cibilMin?: string
+  onCibilMinChange?: (v: string) => void
+  cibilMax?: string
+  onCibilMaxChange?: (v: string) => void
+  loanMin?: string
+  onLoanMinChange?: (v: string) => void
+  loanMax?: string
+  onLoanMaxChange?: (v: string) => void
   sortBy: string
   sortDir: 'asc' | 'desc'
   onSortChange: (field: string, dir: 'asc' | 'desc') => void
@@ -118,6 +129,11 @@ export function LeadTable(props: LeadTableProps) {
     statusFilter, onStatusFilterChange,
     priorityFilter, onPriorityFilterChange,
     sourceFilter, onSourceFilterChange,
+    cityFilter = '', onCityFilterChange,
+    cibilMin = '', onCibilMinChange,
+    cibilMax = '', onCibilMaxChange,
+    loanMin = '', onLoanMinChange,
+    loanMax = '', onLoanMaxChange,
     sortBy, sortDir, onSortChange,
     onPageChange,
     selectable, selectedIds = [], onSelectionChange,
@@ -227,6 +243,44 @@ export function LeadTable(props: LeadTableProps) {
               ))}
             </SelectContent>
           </Select>
+          <Input
+            value={cityFilter}
+            onChange={(e) => onCityFilterChange?.(e.target.value)}
+            placeholder="City"
+            className="h-9 w-[120px]"
+          />
+          <div className="flex items-center gap-1">
+            <Input
+              value={cibilMin}
+              onChange={(e) => onCibilMinChange?.(e.target.value)}
+              placeholder="CIBIL min"
+              type="number"
+              className="h-9 w-[110px]"
+            />
+            <Input
+              value={cibilMax}
+              onChange={(e) => onCibilMaxChange?.(e.target.value)}
+              placeholder="CIBIL max"
+              type="number"
+              className="h-9 w-[110px]"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <Input
+              value={loanMin}
+              onChange={(e) => onLoanMinChange?.(e.target.value)}
+              placeholder="Loan min"
+              type="number"
+              className="h-9 w-[110px]"
+            />
+            <Input
+              value={loanMax}
+              onChange={(e) => onLoanMaxChange?.(e.target.value)}
+              placeholder="Loan max"
+              type="number"
+              className="h-9 w-[110px]"
+            />
+          </div>
           {onExport && (
             <Button variant="outline" size="sm" className="h-9" onClick={onExport}>
               <Download className="mr-1.5 h-4 w-4" />
@@ -280,6 +334,21 @@ export function LeadTable(props: LeadTableProps) {
                 leads.map((lead) => {
                   const isUrgent = lead.priority === 'URGENT' || lead.status === 'CALLBACK'
                   const isSelected = selectedIds.includes(lead.id)
+                  const scoreMeta = getLeadScore({
+                    cibilScore: lead.cibilScore,
+                    loanAmount: lead.loanAmount,
+                    city: lead.city,
+                    status: lead.status,
+                    priority: lead.priority,
+                    source: lead.source,
+                  })
+                  const scoreTone = scoreMeta.band === 'Priority'
+                    ? 'bg-red-500/10 text-red-700 dark:text-red-300'
+                    : scoreMeta.band === 'Hot'
+                      ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
+                      : scoreMeta.band === 'Warm'
+                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
                   return (
                     <TableRow
                       key={lead.id}
@@ -307,6 +376,16 @@ export function LeadTable(props: LeadTableProps) {
                               {lead.city ? `${lead.city}` : '—'}
                               {lead.loanType ? ` · ${lead.loanType}` : ''}
                             </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {lead.cibilScore && (
+                                <span className={cn('inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold', scoreTone)}>
+                                  CIBIL {lead.cibilScore}
+                                </span>
+                              )}
+                              <span className={cn('inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold', scoreTone)}>
+                                Score {scoreMeta.score}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </TableCell>

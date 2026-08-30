@@ -287,6 +287,13 @@ export function LeadDetailDrawer({
   }
 
   const isUrgent = full?.priority === 'URGENT' || full?.status === 'CALLBACK'
+  const whatsappNumber = React.useMemo(() => {
+    const digits = (full?.phone ?? lead?.phone ?? '').replace(/\D/g, '')
+    if (!digits) return ''
+    const normalized = digits.startsWith('0') ? digits.slice(1) : digits
+    return digits.startsWith('91') ? digits : `91${normalized}`
+  }, [full?.phone, lead?.phone])
+  const whatsappHref = whatsappNumber ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Hi ${full?.name ?? lead?.name}, this is Velixa Capital. We are following up on your loan enquiry. Please connect with us.`)}` : ''
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -323,6 +330,14 @@ export function LeadDetailDrawer({
               Call now
             </a>
           </Button>
+          {whatsappNumber && (
+            <Button asChild size="sm" variant="outline" className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300">
+              <a href={whatsappHref} target="_blank" rel="noreferrer">
+                <MessageSquare className="mr-1.5 h-4 w-4" />
+                WhatsApp
+              </a>
+            </Button>
+          )}
           {full?.email && (
             <Button asChild size="sm" variant="outline">
               <a href={`mailto:${full.email}`}>

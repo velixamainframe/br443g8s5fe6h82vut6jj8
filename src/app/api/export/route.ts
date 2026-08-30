@@ -11,6 +11,12 @@ export async function GET(req: NextRequest) {
     if (!user) return unauthorized()
 
     const sp = req.nextUrl.searchParams
+    const q = sp.get('q')?.trim() || undefined
+    const city = sp.get('city')?.trim() || undefined
+    const cibilMin = sp.get('cibilMin') ? Number(sp.get('cibilMin')) : undefined
+    const cibilMax = sp.get('cibilMax') ? Number(sp.get('cibilMax')) : undefined
+    const loanMin = sp.get('loanMin') ? Number(sp.get('loanMin')) : undefined
+    const loanMax = sp.get('loanMax') ? Number(sp.get('loanMax')) : undefined
     const status = sp.getAll('status').filter((s) => LEAD_STATUSES.includes(s as never))
     const priority = sp.getAll('priority').filter((p) => LEAD_PRIORITIES.includes(p as never))
     const source = sp.getAll('source').filter((s) => LEAD_SOURCES.includes(s as never))
@@ -24,6 +30,20 @@ export async function GET(req: NextRequest) {
     if (status.length) (where.AND as unknown[]).push({ status: { in: status } })
     if (priority.length) (where.AND as unknown[]).push({ priority: { in: priority } })
     if (source.length) (where.AND as unknown[]).push({ source: { in: source } })
+    if (city) (where.AND as unknown[]).push({ city: { contains: city, mode: 'insensitive' } })
+    if (q) (where.AND as unknown[]).push({ OR: [{ name: { contains: q, mode: 'insensitive' } }, { phone: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { city: { contains: q, mode: 'insensitive' } }] })
+    if (cibilMin !== undefined || cibilMax !== undefined) {
+      const cibilWhere: Record<string, number> = {}
+      if (cibilMin !== undefined) cibilWhere.gte = cibilMin
+      if (cibilMax !== undefined) cibilWhere.lte = cibilMax
+      ;(where.AND as unknown[]).push({ cibilScore: { not: null, ...(cibilWhere as Record<string, number>) } })
+    }
+    if (loanMin !== undefined || loanMax !== undefined) {
+      const loanWhere: Record<string, number> = {}
+      if (loanMin !== undefined) loanWhere.gte = loanMin
+      if (loanMax !== undefined) loanWhere.lte = loanMax
+      ;(where.AND as unknown[]).push({ loanAmount: { not: null, ...(loanWhere as Record<string, number>) } })
+    }
 
     const leads = await db.lead.findMany({
       where: where as never,

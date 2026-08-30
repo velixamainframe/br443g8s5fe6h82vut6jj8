@@ -24,10 +24,10 @@ const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 
 async function main() {
   // ---- Bootstrap admin ----
-  const email = process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@velixacapital.in'
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL || 'Vishes@velixacapital.in'
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'Velkun@1555'
   const name = process.env.BOOTSTRAP_ADMIN_NAME || 'Vishes Administrator'
-  const bootstrapOnly = process.env.BOOTSTRAP_ONLY === 'true'
+  const seedDemoData = process.env.SEED_DEMO_DATA === 'true'
 
   const existing = await db.user.findUnique({ where: { email } })
   if (!existing) {
@@ -45,8 +45,8 @@ async function main() {
     console.log(`• Bootstrap admin already exists: ${email}`)
   }
 
-  if (bootstrapOnly) {
-    console.log('Seed complete. Demo data skipped (BOOTSTRAP_ONLY=true).')
+  if (!seedDemoData) {
+    console.log('Seed complete. Demo data skipped (set SEED_DEMO_DATA=true to include it).')
     return
   }
 

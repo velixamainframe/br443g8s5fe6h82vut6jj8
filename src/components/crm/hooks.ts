@@ -9,6 +9,11 @@ export interface LeadsQuery {
   page?: number
   pageSize?: number
   q?: string
+  city?: string
+  cibilMin?: string
+  cibilMax?: string
+  loanMin?: string
+  loanMax?: string
   status?: LeadStatus[]
   priority?: LeadPriority[]
   source?: LeadSource[]
@@ -28,6 +33,11 @@ export function useLeads(query: LeadsQuery) {
   if (query.page) params.set('page', String(query.page))
   if (query.pageSize) params.set('pageSize', String(query.pageSize))
   if (query.q) params.set('q', query.q)
+  if (query.city) params.set('city', query.city)
+  if (query.cibilMin) params.set('cibilMin', query.cibilMin)
+  if (query.cibilMax) params.set('cibilMax', query.cibilMax)
+  if (query.loanMin) params.set('loanMin', query.loanMin)
+  if (query.loanMax) params.set('loanMax', query.loanMax)
   query.status?.forEach((s) => params.append('status', s))
   query.priority?.forEach((p) => params.append('priority', p))
   query.source?.forEach((s) => params.append('source', s))
@@ -189,6 +199,19 @@ export function useBulkAssign() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] })
       qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
+export function useBulkUpdateLeadStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ leadIds, status }: { leadIds: string[]; status: LeadStatus }) =>
+      api.post<{ updated: number }>('/api/leads/bulk-status', { leadIds, status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+      qc.invalidateQueries({ queryKey: ['callbacks'] })
     },
   })
 }
