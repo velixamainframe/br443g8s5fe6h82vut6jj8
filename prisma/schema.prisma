@@ -45,6 +45,8 @@ model User {
   notes          Note[]
   followups      FollowUp[]
   activities     ActivityLog[]
+  callSessions   CallSession[]   @relation("UserCallSessions")
+  callTransfers  CallSession[]   @relation("CallTransfers")
   requestsMade   InternalRequest[] @relation("RequestAuthor")
   requestsOwned  InternalRequest[] @relation("RequestOwner")
   transfersFrom  LeadTransfer[]  @relation("TransferFrom")
@@ -156,6 +158,7 @@ model Lead {
   notesRel        Note[]
   followups       FollowUp[]
   activities      ActivityLog[]
+  callSessions    CallSession[]
   transfers       LeadTransfer[]
 
   @@index([status])
@@ -210,6 +213,37 @@ model ActivityLog {
 
   @@index([leadId])
   @@index([userId])
+}
+
+model CallSession {
+  id              String    @id @default(cuid())
+  leadId          String
+  lead            Lead      @relation(fields: [leadId], references: [id])
+  userId          String
+  user            User      @relation("UserCallSessions", fields: [userId], references: [id])
+  phone           String
+  sessionToken    String    @unique
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  returnedAt      DateTime? // when user returned to the app after the call
+  // call outcome
+  callStatus      String?   // SUCCESS | FAILED | NOT_ATTEMPTED | ONGOING
+  callDuration    Int?      // in seconds
+  callResult      String?   // SCHEDULED | TRANSFERRED | PENDING_DOCS | CLOSED | OTHER
+  feedback        String?   // general notes from the call
+  // follow-up actions
+  wasSuccessful   Boolean   @default(false)
+  shouldReschedule Boolean  @default(false)
+  rescheduledAt   DateTime?
+  isPendingDocs   Boolean   @default(false)
+  transferredToId String?   // employee to transfer the lead to
+  transferredTo   User?     @relation("CallTransfers", fields: [transferredToId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([leadId])
+  @@index([userId])
+  @@index([sessionToken])
 }
 
 model LeadTransfer {

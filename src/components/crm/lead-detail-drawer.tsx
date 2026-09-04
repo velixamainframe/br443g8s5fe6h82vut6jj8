@@ -145,6 +145,7 @@ export function LeadDetailDrawer({
   const [full, setFull] = React.useState<FullLead | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [tab, setTab] = React.useState('overview')
+  const [callInitiating, setCallInitiating] = React.useState(false)
 
   // note form
   const [noteText, setNoteText] = React.useState('')
@@ -286,6 +287,44 @@ export function LeadDetailDrawer({
     }
   }
 
+  async function initiateCall() {
+    if (!full) return
+    setCallInitiating(true)
+    try {
+      const res = await api.post<{ telLink: string; returnUrl: string; callSession: any }>(
+        '/api/calls',
+        {
+          leadId: full.id,
+          phone: full.phone,
+        }
+      )
+      
+      // Store the return URL in session storage for after the call
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('callReturnUrl', res.returnUrl)
+      }
+      
+      toast({ title: 'Call initiated', description: 'Opening dialer...' })
+      
+      // Reload lead to show it's now assigned
+      await new Promise(resolve => setTimeout(resolve, 500))
+      loadLead(full.id)
+      
+      // Open the tel: link after a brief delay
+      setTimeout(() => {
+        window.location.href = res.telLink
+      }, 100)
+    } catch (e) {
+      toast({
+        title: 'Failed to initiate call',
+        description: e instanceof Error ? e.message : 'Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCallInitiating(false)
+    }
+  }
+
   const isUrgent = full?.priority === 'URGENT' || full?.status === 'CALLBACK'
   const whatsappNumber = React.useMemo(() => {
     const digits = (full?.phone ?? lead?.phone ?? '').replace(/\D/g, '')
@@ -324,11 +363,15 @@ export function LeadDetailDrawer({
 
         {/* Quick actions bar */}
         <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-6 py-3">
-          <Button asChild size="sm" className="bg-success text-white hover:bg-success/90">
-            <a href={`tel:${full?.phone ?? lead?.phone}`}>
-              <Phone className="mr-1.5 h-4 w-4" />
-              Call now
-            </a>
+          <Button 
+            size="sm" 
+            className="bg-success text-white hover:bg-success/90"
+            onClick={initiateCall}
+            disabled={callInitiating || !full}
+          >
+            {callInitiating && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            <Phone className="mr-1.5 h-4 w-4" />
+            Call now
           </Button>
           {whatsappNumber && (
             <Button asChild size="sm" variant="outline" className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300">
